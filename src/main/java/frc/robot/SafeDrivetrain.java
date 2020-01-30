@@ -10,15 +10,15 @@ public class SafeDrivetrain extends DifferentialDrive {
 	private double maxJerk = 10;
 	private Timer time = new Timer();
 	private double lastPower = 0;
-	private double lastLastPower = 0; // joystick values are in finite timestamps...
 	private double lastTime = 0;
-	private double lastLastTime = 0;
 	private double timeWindow = 1;
 	private double maxAcceleration = 0.5;
-	private double thisAccel;
+	private double thisAccel = 0;
+	private double lastAccel = 0;
+	private double thisJerk = 0;
 	private double dt = 0;
 
-	public SafeDrivetrain(SpeedController left, SpeedController right){
+	public SafeDrivetrain(SpeedController left, SpeedController right) {
 		super(left, right);
 		time.start();
 		time.reset();
@@ -27,83 +27,64 @@ public class SafeDrivetrain extends DifferentialDrive {
 
 	@Override
 	public void arcadeDrive(double xSpeed, double zRotation) {
-		
+
 		dt = (time.get() - lastTime);
+		if (dt > 0.5) {
+			dt = 0.5;
+			lastPower = 0;
+			lastAccel = 0;
+		}
+
+
+		double limitPower = lastPower;
 		SmartDashboard.putNumber("dt", dt);
-		double limitPower = lastPower; //fix
-		SmartDashboard.putNumber("last Power", lastPower);
 
 		if (xSpeed != lastPower) {
+
+			double useAcceleration = 0;
+
+			// calculate jerk //
+			thisJerk = (thisAccel - lastAccel) / dt;
+			SmartDashboard.putNumber("thisJerk", thisJerk);
+			// Jerk limit //
+			if (thisJerk > maxJerk) {
+				useAcceleration = lastAccel + (maxJerk * dt);
+			}
+			if (thisAccel < -maxJerk) {
+				useAcceleration = lastAccel - (maxJerk * dt); 
+			}
 			
+			// calculate acceleration //
 			thisAccel = (xSpeed - lastPower) / dt;
 			SmartDashboard.putNumber("thisAccel", thisAccel);
 
-			if (thisAccel > maxAcceleration) {
-				limitPower = lastPower + (maxAcceleration * dt);
+			useAcceleration = limit(useAcceleration, -maxAcceleration, maxAcceleration);
+
+			// Acceleration limit //
+			if (thisAccel > useAcceleration) {
+				limitPower = lastPower + (useAcceleration * dt);
 			}
-			if (thisAccel < -maxAcceleration) {
-				limitPower = lastPower - (maxAcceleration * dt);
+			if (thisAccel < -useAcceleration) {
+				limitPower = lastPower - (useAcceleration * dt);
 			}
 
+
+			// store data //
 			thisAccel = (limitPower - lastPower) / dt;
-			SmartDashboard.putNumber("true accel?", thisAccel);
+			SmartDashboard.putNumber("true accel", thisAccel);
+
+			thisJerk = (useAcceleration - lastAccel) / dt;
+			SmartDashboard.putNumber("true jerk", thisJerk);
 
 			lastPower = limitPower;
+			lastAccel = thisAccel;
 			lastTime = time.get();
 		}
 
 		SmartDashboard.putNumber("limit Power", limitPower);
 
-		super.arcadeDrive(limitPower, zRotation);
-	}
-
-
-	public void aarcadeDrive(double xPower, double zRotation) {
-
-		double thisdt = (time.get() - lastTime);
-		if (thisdt > 0.5) {
-			thisdt = 0.5;
-		}
-		SmartDashboard.putNumber("dt", dt);
-
-		SmartDashboard.putNumber("last Power", lastPower);
-		double limitPower = 0;
-
-		thisAccel = (lastPower - lastLastPower) / dt;
-
-		if (thisAccel > maxAcceleration) {
-			SmartDashboard.putBoolean("if", true);
-			limitPower = lastPower + (maxAcceleration * thisdt);
-		}
-		if (thisAccel < -maxAcceleration) {
-			SmartDashboard.putBoolean("if", false);
-			limitPower = lastPower - (maxAcceleration * thisdt);
-		}
-		SmartDashboard.putNumber("(maxAcceleration * thisdt)", (maxAcceleration * thisdt));
-
-		SmartDashboard.putNumber("thisAccel", thisAccel);
-		thisAccel = (limitPower - lastPower) / thisdt;
-		SmartDashboard.putNumber("true accel?", thisAccel);
-
-
-		// // if(xPower > 1/2*maxJerk*time^2-1/2*maxJerk((time-timeWindow)^2)){
-		// //     xPower = 1/2*maxJerk*time^2-1/2*maxJerk((time-timeWindow)^2);
-		// //     // time.
-		// // }
-
-		SmartDashboard.putNumber("limit Power", limitPower);
-		super.arcadeDrive(limitPower, 0);
-
-		if (xPower != lastPower) {
-
-			lastLastPower = lastPower;
-			lastLastTime = lastTime;
-
-			lastPower = limitPower;
-			lastTime = time.get();
-			dt = lastTime - lastLastTime;
-		}
-
+		super.arcadeDrive(limitPower, zRotation, false);
+		
 	}
 
 	public void setMaxJerk(double maxJerk) {
